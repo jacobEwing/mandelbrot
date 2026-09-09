@@ -34,6 +34,91 @@ var defaultConfig = {
 	}
 };
 
+// Order of values for the compact URL format.
+// Keep this list exactly as-is; if you add fields later, increment the version
+// (e.g., 'v2') and append new fields at the end.
+var CONFIG_ORDER = [
+	'map.x', 'map.y', 'map.width', 'map.height', 'map.accuracy',
+	'palette.colourWavePeriod',
+	'palette.red.offset', 'palette.red.stagger', 'palette.red.period',
+	'palette.green.offset', 'palette.green.stagger', 'palette.green.period',
+	'palette.blue.offset', 'palette.blue.stagger', 'palette.blue.period',
+	'palette.master.offset', 'palette.master.stagger',
+	'palette.staggerMask.red', 'palette.staggerMask.green', 'palette.staggerMask.blue',
+	'options.calculationFlags.iterations', 'options.calculationFlags.displacement',
+	'options.calculationFlags.rotation', 'options.calculationFlags.displacementXOR',
+	'options.calculationFlags.polarCoordXOR',
+	'options.coefficients.iterations', 'options.coefficients.displacement',
+	'options.coefficients.rotation', 'options.coefficients.displacementXOR',
+	'options.coefficients.polarCoordXOR',
+	'options.endCondition',
+	'options.maxRadius',
+	'options.staggerBefore',
+	'options.staggerAfter',
+	'options.recursionDepth',
+	'options.countOffset'
+];
+
+// Helper to get/set nested properties by dot‑separated path.
+function getNestedValue(obj, path) {
+	var parts = path.split('.');
+	var current = obj;
+	for (var i = 0; i < parts.length; i++) {
+		if (current[parts[i]] === undefined) return undefined;
+		current = current[parts[i]];
+	}
+	return current;
+}
+
+function setNestedValue(obj, path, value) {
+	var parts = path.split('.');
+	var current = obj;
+	for (var i = 0; i < parts.length - 1; i++) {
+		if (!current[parts[i]]) current[parts[i]] = {};
+		current = current[parts[i]];
+	}
+	current[parts[parts.length - 1]] = value;
+}
+
+// Serialise the full config to a compact string.
+function serializeConfig(config) {
+	var values = CONFIG_ORDER.map(function(path) {
+		return String(getNestedValue(config, path));
+	});
+	return 'v1,' + values.join(',');
+}
+
+// Deserialise from a 'v1,...' string.
+function deserializeConfig(str) {
+	if (!str.startsWith('v1,')) return null;
+	var parts = str.split(',');
+	if (parts.length !== CONFIG_ORDER.length + 1) return null;
+
+	var cfg = JSON.parse(JSON.stringify(defaultConfig));
+	// Fields that must be kept as strings (not parsed as numbers)
+	var stringFields = [
+		'options.endCondition',
+		'palette.staggerMask.red',
+		'palette.staggerMask.green',
+		'palette.staggerMask.blue'
+	];
+
+	for (var i = 0; i < CONFIG_ORDER.length; i++) {
+		var path = CONFIG_ORDER[i];
+		var val = parts[i + 1];
+		var parsed;
+		if (stringFields.indexOf(path) !== -1) {
+			parsed = val;	 // keep as string
+		} else {
+			// Try to parse as number; if it fails, fall back to string (shouldn't happen)
+			var num = parseFloat(val);
+			parsed = isNaN(num) ? val : num;
+		}
+		setNestedValue(cfg, path, parsed);
+	}
+	return cfg;
+}
+
 // ============================================================================
 // IndexedDB wrapper for renderings (configs + thumbnails)
 // ============================================================================
@@ -1563,7 +1648,7 @@ function showWelcomeWindow() {
 
 function URLPopup() {
 	var content = document.createElement('div');
-	var configText = btoa(JSON.stringify(config, null, "").replace(/\s/g, ''));
+	var configText = serializeConfig(config);
 	var url = window.location.protocol + '//' + window.location.hostname + window.location.pathname + '?config=' + configText;
 	content.innerHTML = `
 		<h2>Share this rendering</h2>
@@ -2271,15 +2356,28 @@ function resizeCanvas() {
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
 // ---- initialise ----
 function initialize() {
 	// load config
 	config = JSON.parse(JSON.stringify(defaultConfig));
+
 	if (window.location.search != '') {
 		var params = window.location.search.slice(1).split('&').map(function(kv) { return kv.split('=', 2); });
 		for (var n in params) {
 			if (params[n][0] == 'config') {
-				try { config = JSON.parse(atob(params[n][1])); } catch (e) {}
+				var raw = decodeURIComponent(params[n][1] || '');
+				try {
+					if (raw.startsWith('v1,')) {
+						config = deserializeConfig(raw);
+					} else {
+						config = JSON.parse(atob(raw));
+					}
+					// Apply any schema migrations (ensures old fields exist)
+					migrateSingleRendering(config);
+				} catch(e) {
+					// If parsing fails, keep the default config
+				}
 				break;
 			}
 		}
@@ -2300,12 +2398,6 @@ function initialize() {
 	sleep(5000);	
 	correctHeightRatio(config);
 	render();
-	/*
-	setTimeout(function(){
-		render();
-		correctHeightRatio(config);
-	}, 0);
-	*/
 	updateFields();
 
 	initMouseWheel();

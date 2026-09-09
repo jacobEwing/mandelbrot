@@ -1,10 +1,6 @@
-- replace the empty saved rendering boxes with a loading icon
-- add a right-click option on saved images allowing you to "load", "load map", and "load palette"
-- add the abillity to apply a backdrop image, as well as a similar sine wave system for translucency, integrating the image like a backlight.
-- add a "stagger pattern" option, where you can select between different types of staggering (e.g. checker, dotted, etc.)
-- add image mapping, taking the end (c, ci) and mapping it to a pixel on a source image.
-- add a "working" indicator when rendering takes more than a small amount of time.
+- add a means of loading solely the palette or the renderingp parameters from any saved rendering
+- add a "stagger texture" option, where you can select between different patterns to stagger on (e.g. checker, dotted, etc.)
+- add image mapping, taking the end (z, zi) and mapping it to a pixel on a source image.
 - add a y-offset and amplitude to the colour waves
 - add a plotter showing the colour waves
 - integrate multiple palette control methods
-- add a better help/intro system

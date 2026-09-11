@@ -262,6 +262,9 @@ function valueAdjuster(inputElement, options) {
 		if (!maxTravelPx) {
 			maxTravelPx = Math.max(24, track.clientWidth / 2 - 14);
 		}
+		if (displayIsInput && document.activeElement === displayEl) {
+			displayEl.blur();
+		}
 		if (handle) handle.style.transform = 'scale(0.96)';
 		window.addEventListener('keydown', onKeyDownGlobal);
 		window.addEventListener('keyup', onKeyUpGlobal);
@@ -303,6 +306,9 @@ function valueAdjuster(inputElement, options) {
 
 	track.addEventListener('wheel', function (e) {
 		e.preventDefault();
+		if (displayIsInput && document.activeElement === displayEl) {
+			displayEl.blur();
+		}
 		var delta = e.deltaY < 0 ? stepSize : -stepSize;
 		setValue(value + delta, true);
 		notifyAdjust();

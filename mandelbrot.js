@@ -1410,6 +1410,8 @@ function updateFields() {
 
 	document.getElementById('staggerBefore').checked = config.options.staggerBefore;
 	document.getElementById('staggerAfter').checked = config.options.staggerAfter;
+
+	drawPaletteGraph();
 };
 
 
@@ -2092,6 +2094,133 @@ function initModifiers() {
 	}
 }
 
+// ============================================================================
+// Palette wave preview
+// ============================================================================
+// Draws the three sine waves that createColour() uses for the palette, so the
+// offset / stagger / period / wave-period controls can be tuned with visual
+// feedback. Each channel is drawn twice: a solid line for the wave itself
+// (offset + masterOffset + period + wavePeriod), and a light dashed line
+// offset by that channel's own stagger contribution, showing how far the
+// stagger can push the curve. The stagger is deliberately *not* drawn as a
+// discontinuous on/off pattern - its input is the iteration count gated by
+// the per-channel bitmask, which has no meaning as a function of a continuous
+// x. The dashed line represents the "stagger is currently on" envelope
+// instead; the actual on/off pattern is what the bitmask dialog controls.
+//
+// The x-axis spans a whole number of full cycles of the fastest channel at
+// the current colourWavePeriod (clamped to a small range), so the graph stays
+// readable whether the wave period is 8 or 800.
+function drawPaletteGraph() {
+	var container = document.getElementById('paletteGraph');
+	var canvasEl = document.getElementById('paletteGraphCanvas');
+	if (!container || !canvasEl) return;
+
+	// Size the backing store to the CSS box, in device pixels, so the graph
+	// is crisp on high-DPI displays without any extra CSS.
+	var cssW = container.clientWidth;
+	var cssH = container.clientHeight;
+	if (cssW < 4 || cssH < 4) return;
+	var dpr = window.devicePixelRatio || 1;
+	var w = Math.round(cssW * dpr);
+	var h = Math.round(cssH * dpr);
+	if (canvasEl.width !== w) canvasEl.width = w;
+	if (canvasEl.height !== h) canvasEl.height = h;
+
+	var ctx = canvasEl.getContext('2d');
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	ctx.clearRect(0, 0, cssW, cssH);
+
+	// Determine the x range: try for about two full cycles of whichever
+	// channel has the highest period, but keep it to a whole number of cycles
+	// of the base wave so the graph starts and ends at a visually clean point.
+	var colourWavePeriod = config.palette.colourWavePeriod || 64;
+	var fastestPeriod = Math.max(
+		config.palette.red.period || 1,
+		config.palette.green.period || 1,
+		config.palette.blue.period || 1
+	);
+	// Cycles of the *base* wave to show, chosen so the fastest channel shows
+	// roughly two cycles' worth of detail.
+	var targetFastCycles = 2;
+	var baseCycles = Math.max(1, Math.round(targetFastCycles / fastestPeriod));
+	baseCycles = Math.min(baseCycles, 8); // don't blow out to hundreds of stripes
+	var xMax = baseCycles * colourWavePeriod;
+
+	var midY = cssH / 2;
+	var amp = cssH * 0.42;
+	// Map n -> x in CSS pixels; n == 0 is at the left edge.
+	var xAt = function (n) { return (n / xMax) * cssW; };
+
+	// Faint horizontal rules at -1, 0, +1
+	ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	ctx.moveTo(0, midY - amp); ctx.lineTo(cssW, midY - amp);
+	ctx.moveTo(0, midY);       ctx.lineTo(cssW, midY);
+	ctx.moveTo(0, midY + amp); ctx.lineTo(cssW, midY + amp);
+	ctx.stroke();
+
+	// Marker at n = 0 (the unshifted phase reference)
+	ctx.strokeStyle = 'rgba(242, 192, 94, 0.55)';
+	ctx.beginPath();
+	ctx.moveTo(xAt(0), 0); ctx.lineTo(xAt(0), cssH);
+	ctx.stroke();
+
+	var masterOffset = config.palette.master.offset || 0;
+	var masterStagger = config.palette.master.stagger || 0;
+	var channels = [
+		{ key: 'red',   colour: '#d64545' },
+		{ key: 'green', colour: '#3aa64a' },
+		{ key: 'blue',  colour: '#3a6ad6' }
+	];
+
+	// Number of x samples: one per device pixel is plenty for a smooth curve.
+	var samples = Math.max(2, Math.round(cssW * dpr));
+
+	for (var c = 0; c < channels.length; c++) {
+		var ch = channels[c];
+		var pal = config.palette[ch.key];
+		var period = pal.period || 1;
+		var offset = (pal.offset || 0) + masterOffset;
+		var staggerTotal = (pal.stagger || 0) + masterStagger;
+
+		// Solid: the wave as drawn when stagger contribution is 0.
+		ctx.strokeStyle = ch.colour;
+		ctx.lineWidth = 1.5;
+		ctx.beginPath();
+		for (var i = 0; i <= samples; i++) {
+			var n = (i / samples) * xMax;
+			var ang = 2 * Math.PI * n * period / colourWavePeriod;
+			var y = Math.sin(ang + offset);
+			var px = (i / samples) * cssW;
+			var py = midY - y * amp;
+			if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+		}
+		ctx.stroke();
+
+		// Dashed: envelope when the stagger contribution is 1.
+		if (staggerTotal !== 0) {
+			ctx.save();
+			ctx.strokeStyle = ch.colour;
+			ctx.globalAlpha = 0.35;
+			ctx.lineWidth = 1;
+			ctx.setLineDash([2, 2]);
+			ctx.beginPath();
+			for (var j = 0; j <= samples; j++) {
+				var n2 = (j / samples) * xMax;
+				var ang2 = 2 * Math.PI * n2 * period / colourWavePeriod;
+				var y2 = Math.sin(ang2 + offset + staggerTotal);
+				var px2 = (j / samples) * cssW;
+				var py2 = midY - y2 * amp;
+				if (j === 0) ctx.moveTo(px2, py2); else ctx.lineTo(px2, py2);
+			}
+			ctx.stroke();
+			ctx.restore();
+		}
+	}
+}
+
 // Listeners only need to be attached once; initPaletteAdjusters() gets
 // called again on every loadDefaults()/refreshAll() (e.g. loading a saved
 // rendering), and without this guard each call would stack another set of
@@ -2132,12 +2261,14 @@ function initPaletteAdjusters() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].offset = v;
 				element.offsetText.value = v;
+				drawPaletteGraph();
 				scheduleRedraw();
 			});
 			element.offsetText.addEventListener('input', function() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].offset = v;
 				element.offset.value = v;
+				drawPaletteGraph();
 				scheduleRedraw();
 			});
 
@@ -2146,12 +2277,14 @@ function initPaletteAdjusters() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].stagger = v;
 				element.staggerText.value = v;
+				drawPaletteGraph();
 				scheduleRedraw();
 			});
 			element.staggerText.addEventListener('input', function() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].stagger = v;
 				element.stagger.value = v;
+				drawPaletteGraph();
 				scheduleRedraw();
 			});
 		})(n);
@@ -2267,6 +2400,9 @@ function initTabBars() {
 					body.style.opacity = '1';
 					this.classList.remove('collapsed');
 				}
+				if (this.parentElement.dataset.section === 'palette') {
+					setTimeout(drawPaletteGraph, 320);
+				}
 			}
 		};
 		// init: ensure open bodies have max-height set
@@ -2305,6 +2441,7 @@ function initValueAdjusters() {
 		displayElement: document.getElementById('numcoloursDisplay'),
 		onAdjust: function (newValue) {
 			config.palette.colourWavePeriod = newValue;
+			drawPaletteGraph();
 			if (!suppressAdjusterSync) scheduleRedraw();
 		}
 	});
@@ -2315,6 +2452,7 @@ function initValueAdjusters() {
 			displayElement: document.getElementById(primary + 'PeriodText'),
 			onAdjust: function (newValue) {
 				config.palette[primary].period = newValue;
+				drawPaletteGraph();
 				if (!suppressAdjusterSync) scheduleRedraw();
 			}
 		});
@@ -2450,6 +2588,7 @@ function resizeCanvas() {
 		correctHeightRatio(config);
 		render();
 	}
+	drawPaletteGraph();
 }
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -2498,6 +2637,7 @@ function initialize() {
 	initValueAdjusters();
 	render();
 	updateFields();
+	drawPaletteGraph();
 
 	initMouseWheel();
 	initMouseDrag();

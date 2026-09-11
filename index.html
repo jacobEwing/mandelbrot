@@ -5,10 +5,10 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Mandelbrot Explorer</title>
 	<link rel="icon" type="image" href="mandelbrot.ico" />
-	<link rel="stylesheet" href="libs/valueAdjuster.css?v=1.4"/>
-	<link rel="stylesheet" href="mandelbrot.css?v=1.4"/>
-	<script type="text/javascript" src="libs/valueAdjuster.js?v=1.4"></script>
-	<script type="text/javascript" src="mandelbrot.js?v=1.4"></script>
+	<link rel="stylesheet" href="libs/valueAdjuster.css?v=1.5"/>
+	<link rel="stylesheet" href="mandelbrot.css?v=1.5"/>
+	<script type="text/javascript" src="libs/valueAdjuster.js?v=1.5"></script>
+	<script type="text/javascript" src="mandelbrot.js?v=1.5"></script>
 </head>
 <body>
 	<div class="app" id="app">
@@ -205,6 +205,12 @@
 								<div class="slider-row"><label>Green</label><input type="number" id="greenPeriod" step="any" value="1" /><input type="number" id="greenPeriodText" class="value-adjuster-display" step="any" /></div>
 								<div class="slider-row"><label>Blue</label><input type="number" id="bluePeriod" step="any" value="1" /><input type="number" id="bluePeriodText" class="value-adjuster-display" step="any" /></div>
 							</div>
+
+							<!-- Live preview of the palette sine waves -->
+							<div class="palette-graph" id="paletteGraph">
+								<canvas id="paletteGraphCanvas"></canvas>
+							</div>
+
 						</div>
 					</div>
 

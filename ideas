@@ -2,5 +2,4 @@
 - add a "stagger texture" option, where you can select between different patterns to stagger on (e.g. checker, dotted, etc.)
 - add image mapping, taking the end (z, zi) and mapping it to a pixel on a source image.
 - add a y-offset and amplitude to the colour waves
-- add a plotter showing the colour waves
 - integrate multiple palette control methods

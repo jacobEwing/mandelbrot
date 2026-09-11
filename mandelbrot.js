@@ -2116,8 +2116,7 @@ function drawPaletteGraph() {
 	var canvasEl = document.getElementById('paletteGraphCanvas');
 	if (!container || !canvasEl) return;
 
-	// Size the backing store to the CSS box, in device pixels, so the graph
-	// is crisp on high-DPI displays without any extra CSS.
+	// Size the backing store to the CSS box, in device pixels.
 	var cssW = container.clientWidth;
 	var cssH = container.clientHeight;
 	if (cssW < 4 || cssH < 4) return;
@@ -2131,28 +2130,95 @@ function drawPaletteGraph() {
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	ctx.clearRect(0, 0, cssW, cssH);
 
-	// Determine the x range: try for about two full cycles of whichever
-	// channel has the highest period, but keep it to a whole number of cycles
-	// of the base wave so the graph starts and ends at a visually clean point.
 	var colourWavePeriod = config.palette.colourWavePeriod || 64;
+
+	// ---- x-axis range (UNCHANGED) ----
+	// Auto-scaled to a small whole number of full cycles of the fastest
+	// channel, exactly as before. This is what keeps the plotted wave shape
+	// identical regardless of colourWavePeriod. The ruler notches below are
+	// deliberately in absolute iteration-count units, so they *do* move as
+	// colourWavePeriod changes even though the waves don't.
 	var fastestPeriod = Math.max(
 		config.palette.red.period || 1,
 		config.palette.green.period || 1,
 		config.palette.blue.period || 1
 	);
-	// Cycles of the *base* wave to show, chosen so the fastest channel shows
-	// roughly two cycles' worth of detail.
 	var targetFastCycles = 2;
 	var baseCycles = Math.max(1, Math.round(targetFastCycles / fastestPeriod));
-	baseCycles = Math.min(baseCycles, 8); // don't blow out to hundreds of stripes
+	baseCycles = Math.min(baseCycles, 8);
 	var xMax = baseCycles * colourWavePeriod;
 
 	var midY = cssH / 2;
 	var amp = cssH * 0.42;
-	// Map n -> x in CSS pixels; n == 0 is at the left edge.
 	var xAt = function (n) { return (n / xMax) * cssW; };
 
-	// Faint horizontal rules at -1, 0, +1
+	// ---- ruler notches ----
+	// Two tiers, like cm and mm. The spacing is chosen from a "nice numbers"
+	// ladder (1, 2, 5, 10, ...) so that roughly `targetMajorCount` major
+	// notches are visible across the current xMax. Because xMax is
+	// proportional to colourWavePeriod, changing the period slides the fixed
+	// iteration positions of the notches across the canvas - that's the
+	// continuous feedback. When the density drifts too far from the target,
+	// the ladder steps to the next nice value, which keeps the graph legible
+	// at any period without altering the plotted waves.
+	var targetMajorCount = 8;
+	var desiredSpacing = xMax / targetMajorCount;
+	var niceSteps = [1, 2, 5];
+	var majorSpacing = 1;
+	var bestScore = Infinity;
+	for (var e = -3; e <= 7; e++) {
+		for (var s = 0; s < niceSteps.length; s++) {
+			var cand = niceSteps[s] * Math.pow(10, e);
+			var score = Math.abs(Math.log(cand / desiredSpacing));
+			if (score < bestScore) {
+				bestScore = score;
+				majorSpacing = cand;
+			}
+		}
+	}
+
+	// Minor notches subdivide each major interval into fifths (so a 10-unit
+	// major gives 2-unit minors, a 50-unit major gives 10-unit minors, etc.).
+	// If the minor pixel gap would be too tight to read, drop them entirely.
+	var minorDivisions = 5;
+	var minorSpacing = majorSpacing / minorDivisions;
+	var minPixelGap = 5;
+	if ((minorSpacing / xMax) * cssW < minPixelGap) {
+		minorDivisions = 1;
+		minorSpacing = majorSpacing;
+	}
+
+	var majorLen = Math.max(3, cssH * 0.30);
+	var minorLen = Math.max(2, cssH * 0.15);
+
+	// Minor notches first, so the major ones draw on top.
+	if (minorDivisions > 1) {
+		ctx.strokeStyle = 'rgba(0, 0, 0, 0.16)';
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		for (var nm = 0; nm <= xMax + 1e-9; nm += minorSpacing) {
+			// Skip positions coinciding with a major notch.
+			var ratio = nm / majorSpacing;
+			if (Math.abs(ratio - Math.round(ratio)) < 1e-6) continue;
+			var xm = xAt(nm);
+			ctx.moveTo(xm, 0);              ctx.lineTo(xm, minorLen);
+			ctx.moveTo(xm, cssH - minorLen); ctx.lineTo(xm, cssH);
+		}
+		ctx.stroke();
+	}
+
+	// Major notches.
+	ctx.strokeStyle = 'rgba(0, 0, 0, 0.38)';
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	for (var nMaj = 0; nMaj <= xMax + 1e-9; nMaj += majorSpacing) {
+		var xMaj = xAt(nMaj);
+		ctx.moveTo(xMaj, 0);                ctx.lineTo(xMaj, majorLen);
+		ctx.moveTo(xMaj, cssH - majorLen); ctx.lineTo(xMaj, cssH);
+	}
+	ctx.stroke();
+
+	// Faint horizontal rules at -1, 0, +1.
 	ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
 	ctx.lineWidth = 1;
 	ctx.beginPath();
@@ -2161,12 +2227,13 @@ function drawPaletteGraph() {
 	ctx.moveTo(0, midY + amp); ctx.lineTo(cssW, midY + amp);
 	ctx.stroke();
 
-	// Marker at n = 0 (the unshifted phase reference)
+	// Amber marker at n = 0 (the unshifted phase reference).
 	ctx.strokeStyle = 'rgba(242, 192, 94, 0.55)';
 	ctx.beginPath();
 	ctx.moveTo(xAt(0), 0); ctx.lineTo(xAt(0), cssH);
 	ctx.stroke();
 
+	// ---- waves (UNCHANGED) ----
 	var masterOffset = config.palette.master.offset || 0;
 	var masterStagger = config.palette.master.stagger || 0;
 	var channels = [
@@ -2175,7 +2242,7 @@ function drawPaletteGraph() {
 		{ key: 'blue',  colour: '#3a6ad6' }
 	];
 
-	// Number of x samples: one per device pixel is plenty for a smooth curve.
+	// One sample per device pixel is plenty for a smooth curve.
 	var samples = Math.max(2, Math.round(cssW * dpr));
 
 	for (var c = 0; c < channels.length; c++) {
@@ -2185,7 +2252,7 @@ function drawPaletteGraph() {
 		var offset = (pal.offset || 0) + masterOffset;
 		var staggerTotal = (pal.stagger || 0) + masterStagger;
 
-		// Solid: the wave as drawn when stagger contribution is 0.
+		// Solid: the wave as drawn when the stagger contribution is 0.
 		ctx.strokeStyle = ch.colour;
 		ctx.lineWidth = 1.5;
 		ctx.beginPath();
@@ -2199,7 +2266,7 @@ function drawPaletteGraph() {
 		}
 		ctx.stroke();
 
-		// Dashed: envelope when the stagger contribution is 1.
+		// Dashed: the envelope when the stagger contribution is 1.
 		if (staggerTotal !== 0) {
 			ctx.save();
 			ctx.strokeStyle = ch.colour;
@@ -2220,7 +2287,6 @@ function drawPaletteGraph() {
 		}
 	}
 }
-
 // Listeners only need to be attached once; initPaletteAdjusters() gets
 // called again on every loadDefaults()/refreshAll() (e.g. loading a saved
 // rendering), and without this guard each call would stack another set of

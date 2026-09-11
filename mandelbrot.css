@@ -504,6 +504,50 @@ body {
 	color: var(--color-text-primary);
 }
 
+/* ---------- Custom value-adjuster widgets (valueAdjuster.js) ---------- */
+.field-row > .value-adjuster,
+.slider-row > .value-adjuster {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 1.5em;
+}
+
+/* The editable read-out sitting beside each widget. Needs to out-specify
+   the generic `.field-row input[type="number"]` rule above, which is why
+   these selectors are quite specific and appear later in the file.
+   `pointer-events: auto` is important: the widget's own internal readout
+   (.value-adjuster-display, a plain <div>) sets `pointer-events: none`, and
+   that rule also matches this input - without this override the field can
+   only be focused by tabbing, which is why clicking it previously felt so
+   unresponsive. */
+.field-row > input.value-adjuster-display,
+.slider-row > input.value-adjuster-display {
+	flex: 0 0 auto;
+	width: 5.4rem;
+	min-width: 0;
+	min-height: 1.5em;
+	text-align: right;
+	background: rgba(255, 255, 255, 0.6);
+	border: 1px solid var(--color-border-light);
+	border-radius: 4px;
+	padding: 0.2rem 0.4rem;
+	font-size: var(--font-size-xs);
+	font-family: monospace;
+	color: var(--color-text-primary);
+	-moz-appearance: textfield;
+	pointer-events: auto;
+	cursor: text;
+}
+.slider-row > input.value-adjuster-display {
+	width: 4.6rem;
+}
+.field-row > input.value-adjuster-display:focus,
+.slider-row > input.value-adjuster-display:focus {
+	outline: none;
+	border-color: var(--color-accent);
+	background: var(--color-bg-input-focus);
+}
+
 /* ---------- Buttons ---------- */
 .btn-block {
 	display: flex;

@@ -6,6 +6,14 @@ var activeRendering = 0;
 var colourBlack = { red: 0, green: 0, blue: 0, alpha: 1 };
 var thumbnailSize = 96;
 
+// Custom value-adjuster widgets (valueAdjuster.js) that replaced the plain
+// number inputs / range sliders for these fields.
+var valueAdjusters = {};
+
+// Set while config values are being pushed into those widgets, so their
+// onAdjust callbacks don't fire a redraw for every single field.
+var suppressAdjusterSync = false;
+
 var defaultConfig = {
 	"map": {
 		"width": 4.1,
@@ -1324,7 +1332,8 @@ function resetMandelbrot() {
 	document.getElementById('yOffset').value = config.map.y;
 	document.getElementById('width').value = config.map.width;
 	document.getElementById('accuracy').value = config.map.accuracy;
-	document.getElementById('countOffset').value = config.options.countOffset;
+	setAdjusterValue('countOffset', config.options.countOffset);
+
 
 	render();
 }
@@ -1332,8 +1341,8 @@ function resetMandelbrot() {
 function resetRenderOptions() {
 	var palette = JSON.parse(JSON.stringify(defaultConfig.palette));
 	config.palette.colourWavePeriod = palette.colourWavePeriod;
+	setAdjusterValue('numcolours', config.palette.colourWavePeriod);
 
-	document.getElementById('numcolours').value = config.palette.colourWavePeriod;
 	render();
 }
 
@@ -1342,10 +1351,11 @@ function updateFields() {
 	document.getElementById('yOffset').value = config.map.y;
 	document.getElementById('width').value = config.map.width;
 	document.getElementById('accuracy').value = config.map.accuracy;
-	document.getElementById('numcolours').value = config.palette.colourWavePeriod;
-	document.getElementById('countOffset').value = config.options.countOffset || 0;
 	document.getElementById('maxRadius').value = config.options.maxRadius || 4;
 	document.getElementById('recursionDepth').value = config.options.recursionDepth || 1;
+
+	setAdjusterValue('numcolours', config.palette.colourWavePeriod);
+	setAdjusterValue('countOffset', config.options.countOffset || 0);
 
 	// Set end condition radio by value
 	var endValue = config.options.endCondition || 'addition';
@@ -1960,8 +1970,6 @@ function initFieldUpdates() {
 		'yOffset': 'y',
 		'width': 'width',
 		'accuracy': 'accuracy',
-		'numcolours': 'colourWavePeriod',
-		'countOffset': 'countOffset',
 		'maxRadius': 'maxRadius',
 		'recursionDepth': 'recursionDepth'
 	};
@@ -2069,8 +2077,9 @@ function initPaletteAdjusters() {
 			staggerText: document.getElementById(c + 'StaggerText'),
 		};
 		if (c != 'master') {
-			elements[c].period = document.getElementById(c + 'Period');
-			elements[c].periodText = document.getElementById(c + 'PeriodText');
+			// The per-channel period multipliers are now custom
+			// value-adjuster widgets (see initValueAdjusters()).
+			setAdjusterValue(c + 'Period', config.palette[c].period);
 		}
 	}
 	for (var n in elements) {
@@ -2083,10 +2092,6 @@ function initPaletteAdjusters() {
 			element.offsetText.value = config.palette[n].offset;
 			element.stagger.value = config.palette[n].stagger;
 			element.staggerText.value = config.palette[n].stagger;
-			if (element.period) {
-				element.period.value = config.palette[n].period;
-				element.periodText.value = config.palette[n].period;
-			}
 
 			if (paletteAdjustersInitialized) return; // listeners already attached
 
@@ -2117,22 +2122,6 @@ function initPaletteAdjusters() {
 				element.stagger.value = v;
 				redraw();
 			});
-
-			// --- Period (if exists) ---
-			if (element.period) {
-				element.period.addEventListener('input', function() {
-					var v = parseFloat(this.value) || 0.01;
-					config.palette[n].period = v;
-					element.periodText.value = v;
-					redraw();
-				});
-				element.periodText.addEventListener('input', function() {
-					var v = parseFloat(this.value) || 0.01;
-					config.palette[n].period = v;
-					element.period.value = v;
-					redraw();
-				});
-			}
 		})(n);
 	}
 	paletteAdjustersInitialized = true;
@@ -2234,6 +2223,55 @@ function initTabBars() {
 			}
 		}
 	}
+}
+
+// Builds the custom slider widgets. Must run after the DOM exists and before
+// anything calls updateFields()/initPaletteAdjusters().
+function initValueAdjusters() {
+	valueAdjusters.countOffset = valueAdjuster(document.getElementById('countOffset'), {
+		indicatorStyle: 'handle',
+		displayElement: document.getElementById('countOffsetDisplay'),
+		stepSize: 1,
+		// Fire onAdjust continuously while dragging so the canvas updates
+		// live, exactly like the palette offset/stagger sliders do.
+		onAdjust: function (newValue) {
+			config.options.countOffset = newValue;
+			if (!suppressAdjusterSync) redraw();
+		}
+	});
+
+	valueAdjusters.numcolours = valueAdjuster(document.getElementById('numcolours'), {
+		indicatorStyle: 'handle',
+		displayElement: document.getElementById('numcoloursDisplay'),
+		onAdjust: function (newValue) {
+			config.palette.colourWavePeriod = newValue;
+			if (!suppressAdjusterSync) redraw();
+		}
+	});
+
+	['red', 'green', 'blue'].forEach(function (primary) {
+		valueAdjusters[primary + 'Period'] = valueAdjuster(document.getElementById(primary + 'Period'), {
+			indicatorStyle: 'handle',
+			displayElement: document.getElementById(primary + 'PeriodText'),
+			onAdjust: function (newValue) {
+				config.palette[primary].period = newValue;
+				if (!suppressAdjusterSync) redraw();
+			}
+		});
+	});
+}
+
+// Pushes a value into one of the widgets without triggering its onAdjust
+// callback. Used when the config is replaced wholesale (loading a saved
+// rendering, resetting to defaults, reading a URL) so we don't fire a redraw
+// per field.
+function setAdjusterValue(name, v) {
+	var adjuster = valueAdjusters[name];
+	if (!adjuster) return;
+	var previous = suppressAdjusterSync;
+	suppressAdjusterSync = true;
+	adjuster.setValue(v);
+	suppressAdjusterSync = previous;
 }
 
 /* This function is used to handle backwards compatability with old saved
@@ -2397,6 +2435,7 @@ function initialize() {
 	window.addEventListener('resize', function() { setTimeout(resizeCanvas, 100); });
 	sleep(5000);	
 	correctHeightRatio(config);
+	initValueAdjusters();
 	render();
 	updateFields();
 

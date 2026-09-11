@@ -2159,6 +2159,36 @@ function initPaletteAdjusters() {
 	paletteAdjustersInitialized = true;
 }
 
+// Allow the tab key to cycle within subsets of available fields, rather than
+// the entire document.
+function initFieldTabCycling() {
+	['tab-offset', 'tab-stagger', 'tab-period', 'tab-calc', 'tab-other', 'mainParams'].forEach(function (paneId) {
+		var pane = document.getElementById(paneId);
+		if (!pane) return;
+
+		pane.addEventListener('keydown', function (e) {
+			if (e.key !== 'Tab') return;
+
+			// only cycle between actual text/number input fields
+			var fields = Array.prototype.filter.call(
+				pane.querySelectorAll('input[type="text"], input[type="number"]'),
+				function (el) { return el.offsetParent !== null && !el.disabled; }
+			);
+			if (!fields.length) return;
+
+			var idx = fields.indexOf(e.target);
+			if (idx === -1) return; // focus is somewhere else in the pane - let Tab behave normally
+
+			e.preventDefault();
+			var next = e.shiftKey
+				? (idx - 1 + fields.length) % fields.length
+				: (idx + 1) % fields.length;
+			fields[next].focus();
+			fields[next].select(); // so typing replaces rather than appends - drop if you'd rather not
+		});
+	});
+}
+
 // ---- section collapse helpers ----
 function recalcSectionHeights() {
 	var bodies = document.querySelectorAll('.section-body');
@@ -2476,6 +2506,7 @@ function initialize() {
 	initPaletteAdjusters();
 	initModifiers();
 	initTabBars();
+	initFieldTabCycling();
 
 	// Update localStorage data (but keep it) – do this before migration
 	updateOldStoredData();

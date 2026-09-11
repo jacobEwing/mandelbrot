@@ -1279,6 +1279,38 @@ function renderCPU() {
 	renderSegment();
 }
 
+// ---- throttled redraw for continuous controls ----
+// The palette offset/stagger sliders and the value-adjuster widgets all
+// call back continuously while the user drags, the way a native range
+// slider's `input` event does. That's fine on the GPU path, where a full
+// colour pass is cheap, but when the CPU is doing it (no WebGL2, or a deep
+// zoom where the precision fallback kicked in) a full JS loop over every
+// pixel per frame turns dragging into a slideshow. This caps repaints on
+// the CPU path; the trailing call guarantees the final value is painted.
+var REDRAW_CPU_INTERVAL = 100; // ms; ~10fps while dragging on the CPU path
+var _lastRedrawTime = 0;
+var _redrawPending = false;
+
+function scheduleRedraw() {
+	if (!gpuState.disabled) {
+		redraw(); // GPU path: no reason to delay
+		return;
+	}
+	var now = performance.now();
+	var elapsed = now - _lastRedrawTime;
+	if (elapsed >= REDRAW_CPU_INTERVAL) {
+		_lastRedrawTime = now;
+		redraw();
+	} else if (!_redrawPending) {
+		_redrawPending = true;
+		setTimeout(function () {
+			_redrawPending = false;
+			_lastRedrawTime = performance.now();
+			redraw();
+		}, REDRAW_CPU_INTERVAL - elapsed);
+	}
+}
+
 function redraw() {
 	// Try the GPU colour pass first, regardless of whether the iteration
 	// itself ran on the GPU or the CPU - only the iteration needs the
@@ -2100,13 +2132,13 @@ function initPaletteAdjusters() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].offset = v;
 				element.offsetText.value = v;
-				redraw();
+				scheduleRedraw();
 			});
 			element.offsetText.addEventListener('input', function() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].offset = v;
 				element.offset.value = v;
-				redraw();
+				scheduleRedraw();
 			});
 
 			// --- Stagger ---
@@ -2114,13 +2146,13 @@ function initPaletteAdjusters() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].stagger = v;
 				element.staggerText.value = v;
-				redraw();
+				scheduleRedraw();
 			});
 			element.staggerText.addEventListener('input', function() {
 				var v = parseFloat(this.value) || 0;
 				config.palette[n].stagger = v;
 				element.stagger.value = v;
-				redraw();
+				scheduleRedraw();
 			});
 		})(n);
 	}
@@ -2232,11 +2264,9 @@ function initValueAdjusters() {
 		indicatorStyle: 'handle',
 		displayElement: document.getElementById('countOffsetDisplay'),
 		stepSize: 1,
-		// Fire onAdjust continuously while dragging so the canvas updates
-		// live, exactly like the palette offset/stagger sliders do.
 		onAdjust: function (newValue) {
 			config.options.countOffset = newValue;
-			if (!suppressAdjusterSync) redraw();
+			if (!suppressAdjusterSync) scheduleRedraw();
 		}
 	});
 
@@ -2245,7 +2275,7 @@ function initValueAdjusters() {
 		displayElement: document.getElementById('numcoloursDisplay'),
 		onAdjust: function (newValue) {
 			config.palette.colourWavePeriod = newValue;
-			if (!suppressAdjusterSync) redraw();
+			if (!suppressAdjusterSync) scheduleRedraw();
 		}
 	});
 
@@ -2255,7 +2285,7 @@ function initValueAdjusters() {
 			displayElement: document.getElementById(primary + 'PeriodText'),
 			onAdjust: function (newValue) {
 				config.palette[primary].period = newValue;
-				if (!suppressAdjusterSync) redraw();
+				if (!suppressAdjusterSync) scheduleRedraw();
 			}
 		});
 	});

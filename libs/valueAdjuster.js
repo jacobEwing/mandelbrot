@@ -194,8 +194,32 @@ function valueAdjuster(inputElement, options) {
 	function speedForDistance(dist, fine) {
 		var d = Math.abs(dist);
 		var sign = dist < 0 ? -1 : 1;
-		var base = Math.pow(d / 18, 1.9) * 0.02 + (d > 8 ? (d - 8) * 0.01 : 0);
-		if (fine) base *= 0.05;
+
+		// Pixels that count as one "unit" of the curve's input. Larger makes
+		// the curve flatter for longer, so early movement is slower; smaller
+		// lets the speed ramp up sooner.
+		var referenceDistance = 18;
+		// Exponent applied to that normalised distance. >1 makes the response
+		// superlinear, so the rate grows faster than the drag distance - this
+		// is the main acceleration knob.
+		var curveExponent = 1.9;
+		// Overall gain: converts the curve's output into value-units per
+		// animation frame. Raise for a faster scrub everywhere, lower for
+		// finer control.
+		var baseGain = 0.02;
+		// Distance past which the linear boost kicks in. Keeps short,
+		// deliberate drags precise while still letting long drags cover a
+		// large range.
+		var linearBoostThreshold = 8;
+		// Extra rate added per pixel beyond that threshold - a steady linear
+		// term so the speed doesn't saturate at large distances.
+		var linearBoostGain = 0.01;
+		// Shift-held multiplier: 5% of the normal rate, for fine adjustment.
+		var fineFactor = 0.05;
+
+		var base = Math.pow(d / referenceDistance, curveExponent) * baseGain +
+			(d > linearBoostThreshold ? (d - linearBoostThreshold) * linearBoostGain : 0);
+		if (fine) base *= fineFactor;
 		return sign * base;
 	}
 

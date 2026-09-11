@@ -2130,7 +2130,7 @@ function drawPaletteGraph() {
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	ctx.clearRect(0, 0, cssW, cssH);
 
-	var colourWavePeriod = config.palette.colourWavePeriod || 64;
+	var colourWavePeriod = Math.abs(config.palette.colourWavePeriod) || 64;
 
 	// ---- x-axis range (UNCHANGED) ----
 	// Auto-scaled to a small whole number of full cycles of the fastest

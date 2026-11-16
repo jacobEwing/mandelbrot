@@ -1690,6 +1690,17 @@ function showWelcomeWindow() {
 	]);
 }
 
+function JSONPopup() {
+	var content = document.createElement('div');
+	var jsonStr = JSON.stringify(config, null, 2);
+	content.innerHTML = `
+		<h2>Export as JSON</h2>
+		<p style="font-size:0.8rem;color:rgba(0,0,0,0.5);">Save this to a .json file and use "Load State" in the native app, or paste it in after saving.</p>
+		<textarea readonly style="width:100%;min-height:400px;font-family:monospace;font-size:11px;">${jsonStr.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</textarea>
+	`;
+	popup(content, [{ label: "Close", action: closePopup }]);
+}
+
 function URLPopup() {
 	var content = document.createElement('div');
 	var configText = serializeConfig(config);
@@ -2727,6 +2738,7 @@ function initialize() {
 	document.getElementById('exportBtn').onclick = exportImage;
 	document.getElementById('loadDefaultsBtn').onclick = loadDefaults;
 	document.getElementById('showIntroBtn').onclick = showWelcomeWindow;
+	document.getElementById('exportJsonBtn').onclick = JSONPopup;
 
 	document.querySelectorAll('.multiplier-btn[data-multiply]').forEach(function(b) {
 		b.onclick = function() { multiplyAccuracy(parseFloat(this.dataset.multiply)); };
